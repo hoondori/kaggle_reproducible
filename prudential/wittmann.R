@@ -1,3 +1,9 @@
+
+### Notice
+# This is NOT my work !!
+# This is copy from https://www.kaggle.com/wittmaan/prudential-life-insurance-assessment/exploring-the-data/code
+
+
 library(ggplot2)
 library(gridExtra)
 

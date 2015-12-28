@@ -1,3 +1,9 @@
+
+### Notice
+# This is NOT my work !!
+# This is copy from https://www.kaggle.com/chechir/prudential-life-insurance-assessment/features-predictive-power
+
+
 library(caret)
 library(reshape2)
 library(dplyr)
