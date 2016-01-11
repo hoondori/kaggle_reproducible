@@ -11,7 +11,8 @@ import scipy as sp
 import seaborn as sns
 import sqlite3
 import matplotlib.pyplot as plt
-
+from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # explore sqlite contents
 con = sqlite3.connect('./data/database.sqlite')
@@ -86,8 +87,48 @@ largest_states = (tmp.groupby('State')
                     .index[:10].tolist())
 tmp.pivot(index='Year',columns='State',values='Count')[largest_states].plot()
 
+def most_similar_states(state,year=2014,top=3):
+    """
+    Returns the list of states where babies have the most similar names to a given state
 
+    Details
+    ============
+    The state-by-state data is first converted to an TF-IDF matrix:
+       https://en.wikipedia.org/wiki/Tf%E2%80%93idf
+    Then, cosine similarity is computed betweent the given state
+    and every other state:
+       https://en.wikipedia.org/wiki/Cosine_similarity
+    Finally, the list of distances is sorted, and the states with the
+    largest similarity are returned along with their cosine similarity metric.
 
+    Arguments
+    =============
+    state      :   input state that will be compared with all other states
+    year       :   (2014) use baby names from this year
+    top        :   (3) return this many most-similar states
+
+    """
+    # compute a matrix where rows = states, columns = unique baby names(dictionary)
+    features = pd.pivot_table(df2.query('Year=={}'.format(year)),
+                              values='Count',index='State',columns='Name',aggfunc=np.sum)
+    all_states = features.index.tolist()
+
+    if state not in all_states:
+        raise ValueError('Unknown state: {}'.format(state))
+
+    idx = all_states.index(state)
+    model = TfidfTransformer(use_idf=True,smooth_idf=True,norm='l2')
+    tf = model.fit_transform(features.fillna(0))
+    sims = pd.DataFrame.from_records(cosine_similarity(tf[idx:idx+1],tf),columns=all_states).T
+    return (sims
+            .rename(columns={0: 'similarity'})
+            .sort('similarity', ascending=False)
+            .head(top+1).tail(top) # remove first entry, since self-similarity is always 1
+            )
+
+most_similar_states(state='TX',year=2014,top=4)
+
+most_similar_states(state='MA', year=2010, top=4)
 
 
 plt.show()

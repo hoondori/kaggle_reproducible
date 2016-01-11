@@ -35,7 +35,36 @@ str(All_Data)
 #Step 2: Feature Creation - create some features which we want to test in a predictive model
 ##########################################################
 
-# TODO
+#Make a function which will group variables into buckets based on p, p=0.1 <- deciles. 
+#note: the bucket cut offs cannot overlap, thus you are not guaranteed 10 groups with 0.1 nor equally sized groups
+group_into_buckets <- function(var,p) {
+  cut(var,
+      breaks=unique(quantile(var,probs=seq(0,1,by=p), na.rm=T)),
+      include.lowest = TRUE, ordered=TRUE)
+}
+
+# Investigate the Wt variable - Normalized weight of applicant
+summary(All_Data$Wt)
+
+#Make a new variable which is equivalent to the quintile groups of Wt, we can use the group_into_buckets function we defined above
+All_Data$Wt_quantile <- group_into_buckets(All_Data$Wt, 0.2)
+table(All_Data$Wt_quantile)
+class(All_Data$Wt_quantile)
+
+#Investigate the medical keyword fields, would the number of medical keywords equal to 1 have predictive power?
+
+#Function to sum across rows for variables defined
+psum <- function(...,na.rm=FALSE) {
+  rowSums(do.call(cbind,list(...)),na.rm=na.rm)
+}
+
+#Make a new variable which sums across all of the Medical_Keyword dummy variables on an application
+All_Data$Number_medical_keywords <- psum(All_Data[,c(paste("Medical_Keyword_",1:48,sep=""))])
+table(All_Data$Number_medical_keywords)  
+
+#There seems to be low frequencies in the higher numbers, depending on the model we may want to cap this
+All_Data$Number_medical_keywords <- ifelse(All_Data$Number_medical_keywords>7,7,All_Data$Number_medical_keywords)
+table(All_Data$Number_medical_keywords)  
 
 ##############################################################
 #Step 3: Now that we are finished with feature creation lets recreate train and test
@@ -62,8 +91,7 @@ round(table(train_70$Response)/nrow(train_70),2)
 #Lets build a very simple GBM on train_70 and calculate the performance on train_30
 #To make the GBM run faster I will subset train_70 to only include the variables I want in the model
 
-#train_70 <- train_70[,c("Response","BMI","Wt","Ht","Ins_Age","Number_medical_keywords","Wt_quintile")]
-train_70 <- train_70[,c("Response","BMI","Wt","Ht","Ins_Age")]
+train_70 <- train_70[,c("Response","BMI","Wt","Ht","Ins_Age","Number_medical_keywords","Wt_quantile")]
 
 library("gbm")
 GBM_train <- gbm(Response ~ .,
@@ -95,6 +123,26 @@ train_30$Prediction <- apply(Prediction_Object, 1, which.max)
 round(table(train_30$Prediction)/nrow(train_30),2)
 round((table(train_30$Prediction,train_30$Response)/nrow(train_30))*100,1)
 
+#This predicted distribution is different to the actual distribution we looked at above, We have not classed any applications into groups 3 or 4... we would need to improve the model
+#Lets calculate the quadratic weighted kappa with this model
+
+library("Metrics")
+ScoreQuadraticWeightedKappa(train_30$Prediction,as.numeric(train_30$Response))
+
+##############################################################
+#Step 5: Score test data
+#        Repeat step 4 till we are happy with the model. It could be beneficial to rerun the final model on all of the training data and use cross validation etc.
+#        Once we are happy, score the testing data and create a submission file
+##########################################################
+
+Prediction_Object <- predict(GBM_train,test,GBM_train$opt_tree,type="response")
+
+#an array with probability of falling into each class for each observation
+#We want to classify each application, a trivial approach would be to take the class with the highest predicted probability for each application
+test$Response <- apply(Prediction_Object,1,which.max)
+round(table(test$Response)/nrow(test),2)
+submission_file <- test[,c("Id","Response")]
+#write.csv(submission_file,"Submission_file.csv",row.names = FALSE)
 
 
 

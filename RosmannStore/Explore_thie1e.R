@@ -5,7 +5,7 @@
 
 library(data.table)
 library(zoo)
-library(forecaset)
+library(forecast)
 library(ggplot2)
 
 # load data
@@ -192,4 +192,40 @@ colnames(salesByDist) <- c("CompetitionDistance", "MeanSales")
 ggplot(salesByDist, aes(x=log(CompetitionDistance),y=log(MeanSales))) +
   geom_point() + geom_smooth()
 
+# Sales before and after competition opens
+train_store$DateYearmon <- as.yearmon(train_store$Date)
+train_store <- train_store[order(Date)]
+timespan <- 100 # Days to collect before and after opening of competition
+beforeAndAfterComp <- function(s) {
+  x <- train_store[Store==s]
+  daysWithComp <- x$CompetitionOpenSince >= x$DateYearmon
+  if(any(!daysWithComp)) {
+    compOpening <- head(which(!daysWithComp),1)-1
+    if(compOpening>timespan & compOpening < (nrow(x)-timespan)) {
+      x <- x[(compOpening-timespan):(compOpening+timespan),]
+      x$Day <- 1:nrow(x)
+      return(x)
+    }
+  }
+}
+temp <- lapply(unique(train_store[!is.na(CompetitionOpenSince)]$Store), beforeAndAfterComp)
+temp <- do.call(rbind, temp)
+# 147 stores first had no competition but at least 100 days before the end
+# of the data set
+length(unique(temp$Store))
+ggplot(temp[Sales != 0], aes(x = Day, y = Sales)) + 
+  geom_smooth() + 
+  ggtitle(paste("Competition opening around day", timespan))
+
+#The seasonplot is adapted from spsrini (edit: Replace sum and show sales in relation to mean daily sales of a store which better accounts for missing data / closed stores):
+temp <- train
+temp$year <- format(temp$Date, "%Y")
+temp$month <- format(temp$Date, "%m")
+temp[, StoreMean := mean(Sales), by = Store]
+temp <- temp[, .(MonthlySalesMean = mean(Sales / (StoreMean)) * 100), 
+             by = .(year, month)]
+temp <- as.data.frame(temp)
+SalesTS <- ts(temp$MonthlySalesMean, start=2013, frequency=12)
+col = rainbow(3)
+seasonplot(SalesTS, col=col, year.labels.left = TRUE, pch=19, las=1)
 
